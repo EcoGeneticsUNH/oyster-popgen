@@ -1,0 +1,425 @@
+---
+title: "GBE Oyster Population Genomics"
+author: "Alyssa Stasse"
+date: "2024-02-26"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+This document details the genomic analyses that are carried out for Great Bay Estuary, NH eastern oyster population studies. Prior to this, all SNP filtering and analyses were conducted in UNH's Premise computing cloud using a variety of slurm scripts. For more information, please reference the population-genomics-tutorial.pdf file.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(vcfR)
+library(reshape2)
+library(adegenet)
+library(hierfstat)
+library(pegas)
+library(qqman)
+library(vegan)
+library(ggpubr)
+library(devtools)
+library(pcadapt)
+library(StAMPP)
+library(rCNV)
+library(inbreedR)
+library(poppr)
+library(pheatmap)
+library(ade4)
+library(gplots)
+library(grid)
+library(gridGraphics)
+library(ggplot2)
+library(HardyWeinberg)
+library(ape)
+library(adegenet)
+library(ggsn)
+
+theme_ecogen <- function(){
+  theme_classic()+
+  theme(axis.title = element_text(size = 16), 
+        axis.text.x = element_text(size=14, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 1),  
+        axis.line = element_line(color = "black", size = 1),
+        axis.text.y = element_text(size = 14, color = 'black'))
+}
+
+```
+
+```{r load_data, message=FALSE, warning=FALSE, include=FALSE}
+oypop_snps <- read.vcfR("snponly-filtered.recode.vcf")
+oypop_snps2 <- readVCF("snponly-filtered.recode.vcf")
+oy_pops <- read.csv("oypop-snps2.csv", header=TRUE)
+poplist.names <- oy_pops$Population
+```
+
+```{r GBE_map, echo=FALSE, fig.align='center', fig.cap='Map of Great Bay Estuary in New Hampshire, USA. Native oyster reefs at Lamprey River (LR), Squamscott River (SQ), Oyster River (OR), and Adam’s Point (AP) are marked in shades of blue, the restoration site at Nannie Island (NI) is marked in yellow, and farms Fox Point (FP) and Cedar Point (CP) are marked in shades of red. '}
+
+library(ggmap)
+library(tidyverse)
+register_stadiamaps("ed8988df-e4ec-4f72-b2a4-0e09af8c8886")
+
+#intertidal, nannie, virgin, lamprey, fox, sqaum, oyster
+color_palette <- c("#40E0D0","#FFBF00","#800020","#002D62", "#C41E3A","#3457D5", "#4B9CD3")
+
+GBE_map <- get_stadiamap(bbox = c(-70.921099,43.045919,-70.829538, 43.138), maptype = "stamen_toner_lite", zoom = 13, scale = "auto") %>%
+  ggmap()+
+  #Adam's point intertidal
+  geom_point(aes(x = -70.8659, y = 43.097), data = NULL, 
+             alpha = 0.5, color = "#40E0D0", size = 5, pch= 19)+
+  #Nannie Island restoration
+  geom_point(aes(x = -70.86365, y = 43.06843), data = NULL, 
+             alpha = 0.5, color = "#FFBF00", size = 5, pch= 19)+
+  #Fox point farmed
+  geom_point(aes(x = -70.85570, y = 43.1165), data = NULL, 
+             alpha = 0.5, color = "#800020", size = 5, pch= 19)+
+  #Cedar point farmed
+  geom_point(aes(x = -70.863, y = 43.128), data = NULL, 
+             alpha = 0.5, color = "#C41E3A", size = 5, pch= 19)+
+  #Oyster river native
+  geom_point(aes(x = -70.89, y = 43.13), data = NULL, 
+             alpha = 0.5, color = "#4B9CD3", size = 5, pch= 19)+
+  #Lamprey river native
+  geom_point(aes(x = -70.9073, y = 43.069), data = NULL, 
+             alpha = 0.5, color = "#002D62", size = 5, pch= 19)+
+  #Squamscott river native
+  geom_point(aes(x = -70.913, y = 43.055), data = NULL, 
+             alpha = 0.5, color = "#3457D5", size = 5, pch= 19)+
+  annotate('text', x = -70.9140, y = 43.049, label = 'SQ', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.913, y = 43.073, label = 'LR', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.86, y = 43.063, label = 'NI', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.872, y = 43.092, label = 'AP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.851, y = 43.112, label = 'FP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.865, y = 43.134, label = 'CP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.887, y = 43.125, label = 'OR', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.862, y = 43.105, label = 'Little Bay', 
+           colour = I("black"), size = 4.5, fontface = "italic")+
+  annotate('text', x = -70.88, y = 43.073, label = 'Great Bay', 
+           colour = I("black"), size = 4.5, fontface = "italic")+
+  labs(x = 'Longitude', y = 'Latitude')+   
+  theme_ecogen()+
+  ggsn::scalebar(x.min = -70.893, x.max = -70.868, 
+                 y.min = 43.049, y.max = 43.06, dist_unit = "km", 
+                 dist = 0.5, transform = TRUE, 
+                 model = "WGS84", height = 0.1, 
+                 st.dist = 0.1, st.size = 3, border.size = 0.3)#scale bar
+GBE_map
+#ggsave("GBE_map.png")
+```
+
+```{r pairwise fst, echo=FALSE, message=FALSE, fig.align='center', fig.cap='Pairwise FST values estimated using SNP frequency data for native, restoration, and cultivated Crassostrea virginica subpopulations in Great Bay Estuary. '}
+my_genind <- vcfR2genind(oypop_snps)
+strata<- read.csv("oypop-snps2.csv", header=TRUE)
+strata_df <- data.frame(strata)
+strata(my_genind) <- strata_df
+setPop(my_genind) <- ~Population
+
+# Calculate genetic distance matrices
+#genetic_dist <- dist.genpop(genpop) # You may need to choose an appropriate distance measure
+
+fst_matrix <- pairwise.WCfst(my_genind)
+fst_data <- as.data.frame(as.table(fst_matrix))
+x_order <- c("LR", "SQ", "OR", "AP", "NI", "CP", "FP")
+legend_title <- expression("F"(ST[1]))
+
+#fst_matrix
+
+ggplot(fst_data, aes(Var1, Var2, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient(expression(italic(F[ST])), low = "white", high = "#276FBF", limits=c(0,0.05)) +  # Adjust color scale as needed
+  labs(x = "", y = "")+
+  scale_x_discrete(limits=x_order)+
+  scale_y_discrete(limits=x_order)+
+  theme_ecogen()
+
+
+#ggsave("pairwise_fst.png", height=5.1, width=8.22, units="in")
+
+
+```
+
+```{r heterozygosity, echo=FALSE, fig.align='center', fig.cap='Expected and observed heterozygosity values for each population of Crassostrea virginica sampled in Great Bay Estuary, NH.'}
+my_genind <- vcfR2genind(oypop_snps)
+strata<- read.csv("oypop-snps2.csv", header=TRUE)
+strata_df <- data.frame(strata)
+
+strata(my_genind) <- strata_df
+
+setPop(my_genind) <- ~Population
+
+het_results <- genetic_diff(oypop_snps, pop=as.factor(poplist.names), method= 'nei')
+#het_results <- round(colMeans(het_results[,c(3:10)], na.rm = TRUE), digits = 3)
+
+het_df <- melt(het_results[,c(3:10)], varnames=c('Index', 'Sample'), value.name = 'Heterozygosity', na.rm=TRUE)
+#het_df
+
+obs_het <- het_df %>% 
+  group_by(variable) %>% 
+  summarise(obs_het = mean(Heterozygosity))
+
+#obs_het
+obs_het <- obs_het[-nrow(obs_het), ]
+
+# Calculate expected heterozygosity for each population
+exp_het <- Hs(my_genind)
+#exp_het
+
+
+het_data <- cbind(exp_het, obs_het)
+
+het_data$Population <- c("AP", "CP", "FP", "LR", "NI", "OR", "SQ")
+het_data <- subset(het_data, select= -variable)
+het_long <- pivot_longer(het_data, 
+                         cols = c(obs_het, exp_het), 
+                         names_to = "Heterozygosity", 
+                         values_to = "Value")
+#het_long
+
+het_plot <- ggplot(het_long, aes(x=Population, y=Value, fill=Heterozygosity))+
+  geom_bar(stat="identity", position = position_dodge())+
+  scale_fill_manual(values = c("exp_het" = "lightgray", "obs_het" = "grey32"), 
+                    labels = c("Expected", "Observed"))+
+  labs(x="Site", y="Heterozygosity value")+
+  scale_x_discrete(limits=x_order)+
+  ylim(0,0.5)+
+  theme_classic()+
+  theme(axis.title = element_text(size = 18), 
+        axis.text.x = element_text(size=16, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 1),  
+        axis.line = element_line(color = "black", size = 1),
+        axis.text.y = element_text(size = 16, color = 'black'))+
+  theme(legend.position="top",
+        legend.title=element_text(size=14),
+        legend.text=element_text(size=14))
+het_plot
+#ggsave("het_plot.png")
+```
+
+```{r inbreeding, echo=FALSE, fig.align='center', fig.cap='Inbreeding coefficient (FIS) values for each population of Crassostrea virginica sampled in the Bay.'}
+basicstat <- basic.stats(my_genind, diploid = TRUE, digits = 3)
+
+fis_df <- melt(basicstat$Fis, varnames=c('Index', 'Sample'), value.name = 'FIS', na.rm=TRUE)
+#fis_df
+
+fis_sum <- fis_df %>% 
+  group_by(Sample) %>% 
+  summarise(FIS = mean(FIS))
+#fis_sum
+
+fis_plot <- ggplot(fis_df, aes(x=factor(Sample, level=c("CP", "FP", "NI", "OR", "AP", "LR", "SQ")), y=FIS)) + geom_boxplot(fill="#938C7C", notch= FALSE) +
+  labs(x="Site", y=expression(italic(F[IS])))+
+  scale_x_discrete(limits=x_order)+
+  theme_classic()+
+  theme(axis.title = element_text(size = 18), 
+        axis.text.x = element_text(size=16, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 1),  
+        axis.line = element_line(color = "black", size = 1),
+        axis.text.y = element_text(size = 16, color = 'black'))
+fis_plot
+```
+
+```{r effective breeders, echo=FALSE, fig.align='center', fig.cap='Effective population size (Ne) estimates for each population of Crassostrea virginica sampled in Great Bay Estuary. Error bars show lower and upper 90% confidence interval. '}
+ne_estimates <- read.csv("Ne_estimates.csv", header=TRUE)
+library(ggtext)
+
+ne_plot <- ggplot(ne_estimates, aes(x=factor(Site, level=c("CP", "FP", "NI", "OR", "AP", "LR", "SQ")), y=Ne))+
+  geom_point(size=3)+
+  geom_errorbar(aes(ymin=X90_low, ymax=X90_high), width=.2,
+                 position=position_dodge(.9))+
+  labs(x="Site", y=expression(Effective~population~size~italic((N[e]))))+
+  scale_x_discrete(limits=x_order)+
+  theme_classic()+
+  theme(axis.title = element_text(size = 14), 
+        axis.text.x = element_text(size=12, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 0.8),  
+        axis.line = element_line(color = "black", size = 0.8),
+        axis.text.y = element_text(size = 12, color = 'black'))
+
+ne_plot
+
+#ne_estimates
+
+#ggsave("ne_plot.png", height = 8.23, width = 13.51, units="cm")
+```
+
+```{r DAPC, echo=FALSE, fig.align='center', fig.cap='Discriminant analysis of principal components (DAPC) showing the differentiation of SNP genotypes among seven eastern oyster subpopulations in Great Bay Estuary', message=FALSE, warning=FALSE, include=FALSE}
+filename <- read.pcadapt("oypop-snp-bed.bed", type = "bed")
+res <- pcadapt(filename, K = 4, LD.clumping = list(size = 500, thr = 0.2))
+
+ld_filtered_vcf <- oypop_snps[!is.na(res$loadings[,1]),]
+mygl <- vcfR2genlight(ld_filtered_vcf,n.cores =2)
+
+library(SNPRelate)
+library(dartR)
+
+#gl.report.monomorphs(mygl)
+
+mygl <- gl.compliance.check(mygl)
+
+gl2bayescan(mygl, "bayescan.txt", "./")
+
+strata_df <- data.frame(strata)
+
+strata(mygl) <- strata_df
+setPop(mygl) <- ~Population
+
+#nrow(mygl)
+
+grp <- factor(strata$Population)
+oyster.dapc <- dapc(mygl, grp, n.pca = 100, n.da =3)
+#scatter(oyster.dapc, col = cols7, cex = 2, legend = TRUE, clabel = F, posi.leg = "bottomleft", scree.pca = TRUE,
+        #posi.pca = "topleft", cleg = 0.75, posi.da = "topright")
+
+dapc.df <- as.data.frame(oyster.dapc$ind.coord)
+dapc.df$pop <- pop(mygl)
+dapc.df$indNames <- rownames(dapc.df)
+
+dapc2 <- ggplot(dapc.df, aes(x=LD1, y=LD2, colour=pop))+
+  geom_point(size=2)+
+  scale_color_manual(values = color_palette)+
+  geom_hline(yintercept = 0)+
+  geom_vline(xintercept = 0)+
+  theme_ecogen()+ 
+  xlab("DA 1") + 
+  ylab("DA 2")+ 
+  ggtitle("DAPC with populations as groups")
+
+#scatter(oyster.dapc, cell = 0, pch = 18:23, cstar = 0, mstree = TRUE, lwd = 2, lty = 2)
+
+scatter(oyster.dapc, col=c("#40E0D0","#FFBF00","#C41E3A","#002D62","#800020","#3457D5","#4B9CD3"), 
+        cex = 2, legend = TRUE,
+        clabel = FALSE, posi.leg = "topleft", posi.da = "topright",
+        cleg = 0.75, xax = 1, yax = 2, inset.solid = 1)
+
+
+#dapc2
+
+#dev.off()
+
+# Open a JPEG device
+#jpeg("dapc_scatter_plot.jpeg", width = 800, height = 600, quality = 90)
+
+# Produce the scatter plot
+#scatter(dapc2)
+
+# Close the device
+#dev.off()
+```
+
+```{r DAPC fig, echo=FALSE, fig.align='center', fig.cap='Discriminant analysis of principal components (DAPC) showing the differentiation of SNP genotypes among seven eastern oyster subpopulations in Great Bay Estuary', message=FALSE, warning=FALSE}
+scatter(oyster.dapc, col=c("#40E0D0","#FFBF00","#C41E3A","#002D62","#800020","#3457D5","#4B9CD3"), 
+        cex = 2, legend = TRUE,
+        clabel = FALSE, posi.leg = "topleft", posi.da = "topright",
+        cleg = 0.75, xax = 1, yax = 2, inset.solid = 1)
+```
+
+```{r admixture with mapping, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.cap='ADMIXTURE analysis based on SNP profiles of Crassostrea virginica individuals sampled in Great Bay Estuary. Top plot shows individual cluster assignments from ADMIXTURE analysis. Bottom plot shows summary of individual assignments in each population obtained from ADMIXTURE analysis overlaid on a map of Great Bay Estuary, NH, USA. ', fig.width=6, fig.height=8}
+library(ggmap)
+library(tidyverse)
+library(ggforce)
+library(maps)
+library(scatterpie)
+library(gridExtra)
+library(mapmixture)
+
+admix_cv <- read.csv("admix_cv.csv", header=TRUE)
+
+admix_cv_plot <- ggplot(data=admix_cv, aes(x=K, y=Cross.validation.error))+
+  geom_point()+
+  geom_line()+
+  labs(x="K", y="Cross validation error")+
+  theme_classic()+
+  theme(axis.title = element_text(size = 13), 
+        axis.text.x = element_text(size=11, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 0.6),  
+        axis.line = element_line(color = "black", size = 0.6),
+        axis.text.y = element_text(size = 11, color = 'black'))
+#admix_cv_plot
+#ggsave("admix_cv.png", height=5.04, width=4.26, units="in")
+
+register_stadiamaps("ed8988df-e4ec-4f72-b2a4-0e09af8c8886")
+admixture1 <- read.csv("admixture1.csv", header=TRUE)
+admix_coords <- read.csv("admix3.csv", header=TRUE)
+
+GBE_map <- get_stadiamap(bbox = c(-70.921099,43.045919,-70.829538, 43.138), maptype = "stamen_toner_lite", zoom = 13, scale = "auto") %>%
+  ggmap()+
+  geom_scatterpie(aes(x=Lat, y=Long, group = Site), 
+                  data = admix_coords, cols = colnames(admix_coords[,c(4:6)]), pie_scale=3)+
+  scale_fill_manual(values=c("#871a1a","#1F78B4", "#FDBF6F"))+
+  annotate('text', x = -70.9140, y = 43.049, label = 'SR', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.913, y = 43.073, label = 'LR', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.86, y = 43.063, label = 'NI', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.872, y = 43.092, label = 'AP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.851, y = 43.112, label = 'FP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.865, y = 43.134, label = 'CP', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.887, y = 43.125, label = 'OR', 
+           colour = I("black"), size = 4, fontface = "bold")+
+  annotate('text', x = -70.862, y = 43.105, label = 'Little Bay', 
+           colour = I("black"), size = 4.5, fontface = "italic")+
+  annotate('text', x = -70.88, y = 43.073, label = 'Great Bay', 
+           colour = I("black"), size = 4.5, fontface = "italic")+
+  labs(x = 'Longitude', y = 'Latitude')+ 
+  theme_classic()+
+  theme(axis.title = element_text(size = 16), 
+        axis.text.x = element_text(size=12, color="black"), 
+        axis.ticks = element_line (colour = "black", size = 1),  
+        axis.line = element_line(color = "black", size = 1),
+        axis.text.y = element_text(size = 12, color = 'black'))+
+  theme(legend.position = "top", legend.title=element_blank())+
+  ggsn::scalebar(x.min = -70.893, x.max = -70.868, 
+                 y.min = 43.049, y.max = 43.06, dist_unit = "km", 
+                 dist = 0.5, transform = TRUE, 
+                 model = "WGS84", height = 0.1, 
+                 st.dist = 0.1, st.size = 3, border.size = 0.3)#scale bar
+
+
+#GBE_map
+#ggsave("gbe_admixture_plot.png")
+
+structure_barplot <- structure_plot(
+  admixture_df = admixture1,
+  type = "structure",
+  cluster_cols = c("#871a1a","#1F78B4","#FDBF6F"),
+  site_dividers = TRUE,
+  divider_width = 0.4,
+  site_order = c(
+    "LR", "SQ", "OR", "AP", "NI", 
+    "FP", "CP"
+  ),
+  labels = "site",
+  flip_axis = FALSE,
+  site_ticks_size = 0,
+  site_labels_y = -0.2,
+  site_labels_size = 4.0
+)+
+  # Adjust theme options
+  theme(
+    axis.title.y = element_text(size = 14),
+    axis.text.y = element_text(size = 12),
+  )
+
+#structure_barplot
+#ggsave("structure_barplot2.png", height=2, width=9, units = "in")
+grid.arrange(GBE_map, structure_barplot, nrow = 2, heights = c(10,3))
+```

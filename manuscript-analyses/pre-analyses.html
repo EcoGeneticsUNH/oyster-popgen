@@ -12,7 +12,7 @@
 
 <meta name="date" content="2024-09-03" />
 
-<title>SNP calling for genome sequencing</title>
+<title>Pre-analyses: getting the data to make pretty plots</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1620,269 +1620,92 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">SNP calling for genome sequencing</h1>
+<h1 class="title toc-ignore">Pre-analyses: getting the data to make
+pretty plots</h1>
 <h4 class="date">2024-09-03</h4>
 
 </div>
 
 
-<div id="background-uses" class="section level2">
-<h2>Background &amp; uses</h2>
-<p>Prior to this, all sequences should have gone through the
-preprocessing pipeline (titled sequencing-preprocessing.pdf in the
-oyster-popgen repository). If that has not been completed, none of the
-SNP calling outlined in this tutorial will work. All scripts and
-analyses are run on UNH’s computer cluster, premise, unless otherwise
-noted.</p>
-</div>
-<div id="creating-an-anaconda-environment" class="section level2">
-<h2>Creating an anaconda environment</h2>
-<p>For ease of analysis, you will need to create an anaconda environment
-on premise to run all of your analyses. To do this, start by running the
-following code:</p>
-<pre class="bash"><code>module load anaconda
-conda create --name snp-calling</code></pre>
-<p>When it asks to proceed, type in “y” to complete creating the
-anaconda environment. Once it is created, you will need to activate it
-and add in the necessary packages. Each time you activate your
-environment, make sure to load anaconda first with the code above (just
-the module load anaconda, not the conda create). To activate and add in
-the packages, run the following lines of code:</p>
-<pre class="bash"><code>conda activate snp-calling
-conda install -c bioconda freebayes
-conda install -c bioconda vcftools
-conda install -c bioconda admixture
-conda install -c bioconda bwa
-conda install -c bioconda samtools
-conda install -c bioconda gatk
-conda install -c bioconda plink
-conda install -c bioconda admixture
-git clone https://github.com/esrud/currentNe
-cd currentNe
-make
-make static</code></pre>
-<p>Each time the system asks if you would like to proceed, make sure to
-type “y” and hit enter to continue installing the packages.</p>
-<p>Once this has been completed, all necessary packages, as well as the
-currentNe directory with the appropriate scripts, will be installed.</p>
-</div>
-<div id="snp-calling" class="section level2">
-<h2>SNP calling</h2>
-<p>First, you will need to copy the slurm script for SNP calling from
+<p>Before running the code in R to make the pretty figures, there are
+some analyses that need to be done outside of R. This document details
+how to go about each of those analyses. Similar to the
+vcf-filtering.slurm file, there are multiple steps to this that are all
+in the same slurm script.</p>
+<p>First, you will need to copy the slurm script for pre-analyses from
 the ecogen shared directory into your personal directory. To do so, run
 the following lines of code:</p>
-<pre class="bash"><code>cp /mnt/home/ecogen/shared/scripts/snp-calling.slurm /path/to/your/directory/scripts/snp-calling.slurm</code></pre>
+<pre class="bash"><code>cp /mnt/home/ecogen/shared/scripts/pre-analyses.slurm /path/to/your/directory/scripts/pre-analyses.slurm</code></pre>
 <p>Once you have that copied into your scripts directory, open the
 script with vim editor and make sure to change all the path names and
-file names to your specific directories and file names. Next, navigate
-to the directory with all of your aligned bam files. FreeBayes requires
-a list of all files that are to be considered when SNP calling. To
-generate that list, in the directory with your aligned bam files, run
-the following code:</p>
-<pre class="bash"><code>ls *align.bam &gt; bam.fofn</code></pre>
-<p>Once completed, you can run the snp-calling.slurm script:</p>
-<pre class="bash"><code>sbatch snp-calling.slurm</code></pre>
-<p>This script may take a while to run, as SNP calling is a very tedious
-process. This can take days depending on the size of your files and how
-many samples you have. You can look at the output file to get a sense of
-where the script is out. Just be patient!</p>
-</div>
-<div id="snp-filtering" class="section level2">
-<h2>SNP filtering</h2>
-<p>Once you have all SNPs called, you must filter the SNPs. The
-parameters in which you filter them may vary depending on the type of
-analysis you are doing, the population size, etc. Make sure to go
-through and adjust them for your project. For this example, I will be
-using the parameters used in the oyster population genomics paper.
-First, all indels should be removed. Then, the SNPs should be filtered
-based on how many individuals they are present in, minimum quality,
-minor allele count, and minimum depth. Once filtered, individuals with
-excessive missing data should be removed, and then more stringent SNP
-filtering should occur.</p>
-<p>In the ecogen shared scripts directory, there is a slurm script named
-vcf-filtering.slurm. This script contains all of the filtering steps
-that are required for SNP filtering. Each code chunk in the script will
-need to be run one at a time, so make sure to follow the instructions
-for the next steps clearly. Copy the filtering script into your personal
-scripts directory using the following:</p>
-<pre class="bash"><code>cp /mnt/home/ecogen/shared/scripts/vcf-filtering.slurm /path/to/your/directory/scripts/vcf-filtering.slurm</code></pre>
-<p>Make sure to open the file and write in your file names and file
-paths. You will notice all of the vcf commands have a # in front of
-them, which comments them out so they do not run.</p>
-<div id="step-1-remove-indels-from-vcf-file" class="section level3">
-<h3>Step 1: remove indels from vcf file</h3>
-<p>Open the vcf-filtering.slurm file you copied into your scripts
+file names to your specific directories and file names.</p>
+<div id="plink-and-admixture" class="section level2">
+<h2>Plink and admixture</h2>
+<div id="step-1-convert-vcf-to-plink" class="section level3">
+<h3>Step 1: convert vcf to plink</h3>
+<p>Open the pre-analyses.slurm file you copied into your scripts
 directory with the vim editor. Remove the # from the lines under Step 1.
 The code should look like this:</p>
-<pre class="bash"><code># Step 1: remove indels from vcf file
-vcftools --vcf your-vcf-file.vcf  --remove-indels --recode 
---recode-INFO-all --out your-vcf-file-snps-only.vcf</code></pre>
+<pre class="bash"><code># Step 1: convert vcf to plink
+plink --vcf snps-filtered-4.recode.vcf --recode --out snps-filtered-plink</code></pre>
 <p>The rest of the file below step 1 should have # before each and every
 line. Once that is complete, you can run the code with the following
 command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>Once completed, the output file with list how many variant sites you
-started with and how many are left after filtering. Make sure to write
-down these numbers for each step to see how the number of variant sites
-decreases with each filtering step.</p>
+<pre class="bash"><code>sbatch pre-analyses.slurm</code></pre>
+<p>This will output plink files – .ped and .map</p>
 </div>
-<div id="step-2-filter-snps-based-on-minor-allele-count-quality-score-and-how-many-individuals-they-are-present-in" class="section level3">
-<h3>Step 2: filter SNPs based on minor allele count, quality score, and
-how many individuals they are present in</h3>
-<p>Open the vcf-filtering.slurm file you copied into your scripts
-directory with the vim editor. Put # in front of each line of the
-previous step. Remove the # from the lines under Step 2. The code should
-look like this:</p>
-<pre class="bash"><code># Step 1: remove indels from vcf file
-#vcftools --vcf your-vcf-file.vcf  --remove-indels --recode 
-#--recode-INFO-all --out your-vcf-file-snps-only.vcf
-
-
-# Step 2: filter SNPs based on minor allele count, quality score, 
-#and how many individuals they are present in
-vcf=your-vcf-file-snps-only.vcf.recode.vcf
-vcftools --vcf $vcf \
-   --max-missing 0.5 \
-   --mac 3 \
-   --minQ 30 \
-   --recode \
-   --recode-INFO-all \
-   --out snps-filtered-1</code></pre>
-<p>Make sure to change the filtering parameters based on your study.
-Once the vcf-filtering.slurm script is edited, save it and run with the
-following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>Once completed, the output file with list how many variant sites you
-started with and how many are left after filtering. Make sure to write
-down these numbers for each step to see how the number of variant sites
-decreases with each filtering step.</p>
-</div>
-<div id="step-3-filter-based-on-minimum-depth" class="section level3">
-<h3>Step 3: filter based on minimum depth</h3>
-<p>Open the vcf-filtering.slurm file you copied into your scripts
-directory with the vim editor. Put # in front of each line of the
-previous step. Remove the # from the lines under Step 3. The code should
-look like this:</p>
-<pre class="bash"><code># Step 2: filter SNPs based on minor allele count, quality score, 
-#and how many individuals they are present in
-#vcf=your-vcf-file-snps-only.vcf.recode.vcf
-#vcftools --vcf $vcf \
-#   --max-missing 0.5 \
-#   --mac 3 \
-#   --minQ 30 \
-#   --recode \
-#   --recode-INFO-all \
-#   --out snps-filtered-1
-
-
-# Step 3: filter based on minimum depth
-vcftools --vcf snps-filtered-1.recode.vcf \
-   --minDP 3 \
-   --recode \
-   --recode-INFO-all \
-   --out snps-filtered-2</code></pre>
-<p>Make sure to change the filtering parameters based on your study.
-Once the vcf-filtering.slurm script is edited, save it and run with the
-following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>Once completed, the output file with list how many variant sites you
-started with and how many are left after filtering. Make sure to write
-down these numbers for each step to see how the number of variant sites
-decreases with each filtering step.</p>
-</div>
-<div id="step-4-individuals-with-missing-data" class="section level3">
-<h3>Step 4: individuals with missing data</h3>
-<p>Step 4 requires 3 parts: make a list of all individuals and their
-percentage of missing data, create a list of individuals with excessive
-missing data, and remove those individuals from the analyses. To begin,
-open the vcf-filtering.slurm file you copied into your scripts directory
-with the vim editor. Put # in front of each line of the previous step.
-Remove the # from the lines under Step 4.1. The code should look like
+<div id="step-2-convert-to-binary-plink" class="section level3">
+<h3>Step 2: convert to binary plink</h3>
+<p>Open the pre-analyses.slurm file you copied into your scripts
+directory with the vim editor. Add in # for the previous step, and
+remove the # from the lines under Step 2. The code should look like
 this:</p>
-<pre class="bash"><code># Step 3: filter based on minimum depth
-#vcftools --vcf snps-filtered-1.recode.vcf \
-#   --minDP 3 \
-#   --recode \
-#   --recode-INFO-all \
-#   --out snps-filtered-2
+<pre class="bash"><code># Step 1: convert vcf to plink
+#plink --vcf snps-filtered-4.recode.vcf --recode --out snps-filtered-plink
 
-
-# Step 4.1: create list of individuals and how much data they are missing
-vcftools --vcf snps-filtered-2.recode.vcf \
-   --missing-indv</code></pre>
-<p>Once the vcf-filtering.slurm script is edited, save it and run with
-the following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>The output of this will be a file titled out.imiss, which contains
-each individual’s amount of missing data, which will be needed for the
-next step. For the next step, open the vcf-filtering.slurm file you
-copied into your scripts directory with the vim editor. Put # in front
-of each line of the previous step. Remove the # from the lines under
-Step 4.2. The code should look like this:</p>
-<pre class="bash"><code># Step 4.1: create list of individuals and how much data they are missing
-#vcftools --vcf snps-filtered-2.recode.vcf \
-#   --missing-indv
-
-
-# Step 4.2: make list of individuals missing more than 50% of data
-mawk &#39;$5 &gt; 0.5&#39; out.imiss | cut -f1 &gt; lowDP.indv</code></pre>
-<p>Once the vcf-filtering.slurm script is edited, save it and run with
-the following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>The output of this will be a file titled lowDP.indv, which contains
-all individuals that have excessive missing data. In this case, the cut
-off is 50% – if an individual is missing more than half the data, they
-are excluded from the study. Make sure to write down the list of
-individuals and their percent missing data for later. For the next step,
-open the vcf-filtering.slurm file you copied into your scripts directory
-with the vim editor. Put # in front of each line of the previous step.
-Remove the # from the lines under Step 4.3. The code should look like
+# Step 2: convert to binary plink
+plink --file snps-filtered-plink --make-bed --out binary-snps-filtered</code></pre>
+<p>The rest of the file below step 2 should have # before each and every
+line. Once that is complete, you can run the code with the following
+command:</p>
+<pre class="bash"><code>sbatch pre-analyses.slurm</code></pre>
+<p>This will output binary plink files – .bed, .bim, and .fam.</p>
+</div>
+<div id="step-3-perform-admixture" class="section level3">
+<h3>Step 3: perform admixture</h3>
+<p>Open the pre-analyses.slurm file you copied into your scripts
+directory with the vim editor. Add in # for the previous step, and
+remove the # from the lines under Step 3. The code should look like
 this:</p>
-<pre class="bash"><code># Step 4.2: make list of individuals missing more than 50% of data
-#mawk &#39;$5 &gt; 0.5&#39; out.imiss | cut -f1 &gt; lowDP.indv
+<pre class="bash"><code># Step 2: convert to binary plink
+#plink --file snps-filtered-plink --make-bed --out binary-snps-filtered
 
-
-# Step 4.3: remove individuals that have excessive missing data
-vcftools --vcf snps-filtered-2.recode.vcf \
-   --remove lowDP.indv \
-   --recode --recode-INFO-all \
-   --out snps-filtered-3</code></pre>
-<p>This last step will remove the individuals from the vcf file that
-have excessive missing data. Once the vcf-filtering.slurm script is
-edited, save it and run with the following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
+# Step 3: perform admixture
+admixture binary-snps-filtered K</code></pre>
+<p>Replace the K with the number of clusters you want for the analysis.
+Once that is complete, you can run the code with the following
+command:</p>
+<pre class="bash"><code>sbatch pre-analyses.slurm</code></pre>
+<p>This will output two admixture files ending in .Q and .P. .Q contains
+the estimated proportions of ancestry for each individual in the
+dataset, and .P contains the allele frequencies for each ancestral
+population.</p>
+<p>Once completed, make sure to save all files created here to your
+computer.</p>
 </div>
-<div id="step-5-filter-snps-based-on-how-many-individuals-they-are-present-in-minor-allele-frequency-and-depth" class="section level3">
-<h3>Step 5: filter SNPs based on how many individuals they are present
-in, minor allele frequency, and depth</h3>
-<p>Open the vcf-filtering.slurm file you copied into your scripts
-directory with the vim editor. Put # in front of each line of the
-previous step. Remove the # from the lines under Step 5. The code should
-look like this:</p>
-<pre class="bash"><code># Step 4.3: remove individuals that have excessive missing data
-#vcftools --vcf snps-filtered-2.recode.vcf \
-#   --remove lowDP.indv \
-#   --recode --recode-INFO-all \
-#   --out snps-filtered-3
-
-
-# Step 5: filter SNPs based on how many individuals they are present in, 
-# minor allele frequency, and depth
-vcftools --vcf snps-filtered-3.recode.vcf \
-   --max-missing 0.95 \
-   --maf 0.05 \
-   --recode \
-   --recode-INFO-all \
-   --out snps-filtered-4 \
-   --min-meanDP 20</code></pre>
-<p>Make sure to change the parameters based on the specifics of your
-study. Once the vcf-filtering.slurm script is edited, save it and run
-with the following command:</p>
-<pre class="bash"><code>sbatch vcf-filtering.slurm</code></pre>
-<p>Once the code has run, you will have your final, filtered vcf file
-that only contains SNPs. The vcf file is now ready for downstream
-analyses. Have fun!</p>
 </div>
+<div id="currentne" class="section level2">
+<h2>currentNe</h2>
+<p>To estimate the effective population size, navigate into the
+currentNe directory that is on your premise space. Run the following
+code in there:</p>
+<pre class="bash"><code>./currentNe /path/to/your/filtered/vcf/snps-filtered-4.recode.vcf #-of-chromosomes</code></pre>
+<p>This will run the currentNe effective population size estimator. Make
+sure to write in your vcf file path and insert the number of chromosomes
+where #-of-chromosomes is typed. The output file will have all of the Ne
+estimates. If you wish to run this for each subpopulation, do the same
+thing but only with a vcf that has your subpopulations of interest. Now
+you are ready to make pretty graphs!</p>
 </div>
 
 

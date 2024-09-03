@@ -1,9 +1,9 @@
 ---
 title: "SNP calling for genome sequencing"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 date: "2024-09-03"
 ---
 
@@ -34,6 +34,8 @@ conda install -c bioconda admixture
 conda install -c bioconda bwa
 conda install -c bioconda samtools
 conda install -c bioconda gatk
+conda install -c bioconda plink
+conda install -c bioconda admixture
 git clone https://github.com/esrud/currentNe
 cd currentNe
 make

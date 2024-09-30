@@ -64,35 +64,26 @@ cd /mnt/home/ecogen/path/to/your/vcf
 #   --out snps-filtered-1
 
 
-# Step 3: filter based on minimum depth
-#vcftools --vcf snps-filtered-1.recode.vcf \
-#   --minDP 3 \
-#   --recode \
-#   --recode-INFO-all \
-#   --out snps-filtered-2
-
-
-# Step 4.1: create list of individuals and how much data they are missing
+# Step 3.1: create list of individuals and how much data they are missing
 #vcftools --vcf snps-filtered-2.recode.vcf \
 #   --missing-indv
 
 
-# Step 4.2: make list of individuals missing more than 50% of data
+# Step 3.2: make list of individuals missing more than 50% of data
 #mawk '$5 > 0.5' out.imiss | cut -f1 > lowDP.indv
 
 
-# Step 4.3: remove individuals that have excessive missing data
+# Step 3.3: remove individuals that have excessive missing data
 #vcftools --vcf snps-filtered-2.recode.vcf \
 #   --remove lowDP.indv \
 #   --recode --recode-INFO-all \
 #   --out snps-filtered-3
 
 
-# Step 5: filter SNPs based on how many individuals they are present in, minor allele frequency, and depth
+# Step 4: filter SNPs based on how many individuals they are present in, minor allele frequency, and depth
 #vcftools --vcf snps-filtered-3.recode.vcf \
 #   --max-missing 0.95 \
 #   --maf 0.05 \
 #   --recode \
 #   --recode-INFO-all \
 #   --out snps-filtered-4 \
-#   --min-meanDP 20
